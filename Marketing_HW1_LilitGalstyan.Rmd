@@ -1,0 +1,146 @@
+---
+title: "Marketing Analytics | Homework Assignment on Bass Model"
+author: "Lilit Galstyan"
+date: "2023-10-01"
+output:
+  pdf_document: default
+---
+
+
+```{r}
+libs<-c('ggplot2','ggpubr','knitr','diffusion','readxl')
+load_libraries<-function(libs){
+new_libs <- libs[!(libs %in% installed.packages()[,"Package"])]
+if(length(new_libs)>0) {install.packages(new_libs)}
+lapply(libs, library, character.only = TRUE)
+}
+load_libraries(libs)
+```
+
+1. Chosen invention: Samsung Galaxy S22 Ultra - "An Epic Stylus Smartphone".
+
+
+2. Look-alike innovation from the past:
+
+As a past innovation product I have chosen smartphones of Apple, our favorite and famous iPhone's. Apple has always been a competitor of Samsung, their smartphones always being compared to Samsung smartphones. When looking up Samsung Galaxy S22 Ultra, there is information about its competitors, which suggests that especially the latest models of the iPhone's get compared to the chosen Samsung smartphone, and that they are highly competitive in the market (Samsung Galaxy S22 Ultra 5G Alternatives - Similar or Related Devices, n.d.). This gives a good reason to move forward with this research trying to find some pattern between the iPhone smartphones and the predicted sales of the Samsung Galaxy S22 Ultra.
+
+
+3. Data for the look-alike innovation:
+
+As the chosen look-alike is Apple smartphones (iPhone's), I have chosen the data of Apple's worldwide shipments of smartphones. The latter represent how many online sales worldwide were recorded quarterly starting from 2010 until 2023 (this year). The first column represents the quarter in a particular year and the second column represents the shipments in million units. With this data, it is possible to draw some parallels between iPhone sales and the predicted (future) sales of the Samsung smartphone that I have chosen.
+
+```{r}
+data <- read_excel("Apple_sales.xlsx", sheet = "Data")
+data
+```
+
+Because the data is in a format that is quite hard to work with, I have done some data cleaning and manipulation in order to make it more readable and easier to visualize. Firstly, I gave names to the unnamed columns, then, because the first two rows had no necessary information, I dropped them to get rid of redundant data. Next, I separated the QuarterYear column and, as a result, got three columns in total; Year, Quarter, and Shipments. Finally, I have aggregated the data by summing up the shipments by each year in order to have the data of the iPhones' annual shipments. The results of the modifications are presented below:
+
+```{r}
+colnames(data) <- c("QuarterYear", "Shipments")
+data <- data[-c(1, 2), ]
+data$Year <- as.numeric(sub(".*'(\\d+)", "\\1", data$QuarterYear))
+data$Quarter <- sub("'\\d+", "", data$QuarterYear)
+data <- data[, c("Year", "Quarter", "Shipments")]
+data <- aggregate(Shipments ~ Year, data = data, sum)
+data$Year <- paste0("20", data$Year)
+data
+```
+
+Finally, I visualized the modified data to gain some insight on the distribution of the sales. This bar plot represents the distribution of the shipments by each year. For further predictions, it is important to note that for the year of 2023 only the shipments of the first two quarters have been recorded.
+
+```{r}
+sales_vis <- ggplot(data, aes(Year, Shipments)) + geom_bar(stat='identity') + ggtitle("iPhone Shipments from 2010 to 2023, in mln units")
+sales_vis
+```
+
+
+4. Estimating the Bass model parameters for the look-alike innovation:
+
+Method 1 - Non-linear least squares
+
+```{r}
+s <- data$Shipments
+t <- 1:length(s)
+nls_estim <- nls(s ~ m * (((p+q)^2/p) * exp(-(p+q)*t)) / (1+(q/p) * exp(-(p+q)*t)) ^ 2, 
+              start = c(list(m=sum(s), p=0.02, q=0.4)))
+summary(nls_estim)
+```
+
+Method 2 - 'diffusion' library
+
+```{r}
+diff_m = diffusion(s)
+p=round(diff_m$w,4)[1]
+q=round(diff_m$w,4)[2]
+m=round(diff_m$w,4)[3]
+diff_m
+```
+
+
+5. Parameter estimation and prediction:
+
+```{r}
+bass.f <- function(t,p,q){
+    ((p+q)^2/p)*exp(-(p+q)*t)/
+    (1+(q/p)*exp(-(p+q)*t))^2
+}
+```
+
+```{r}
+bass.F <- function(t,p,q){
+    (1-exp(-(p+q)*t))/
+    (1+(q/p)*exp(-(p+q)*t))
+}
+```
+
+Parameters from nls():
+```{r}
+ft_1 <- ggplot(data.frame(t=c(1:14)), aes(t)) + stat_function(fun = bass.f, args = c(p=0.0222, q=0.2416)) +  ggtitle('f(t)')
+ggarrange(ft_1, sales_vis + theme(axis.text.x = element_text(angle = 45, hjust = 1)))
+```
+
+Parameters from Bass model:
+```{r}
+ft_2 <- ggplot(data.frame(t=c(1:14)), aes(t)) + stat_function(fun = bass.f, args = c(p=0.0243, q=0.2395)) +  ggtitle('f(t)')
+ggarrange(ft_2, sales_vis + theme(axis.text.x = element_text(angle = 45, hjust = 1)))
+```
+
+As a result, we conclude that the Bass model method derives parameters that better approximate the given data. Thus, we will use those parameters, p=0.0243, q=0.2395, m=3086, to make prediction for the currently chosen product.
+
+Let's also have a look at the cumulative adoptions of the iPhone shipments:
+
+```{r}
+cumulative_adopt = ggplot(data.frame(t = c(1, 14)), aes(t)) +
+stat_function(fun = bass.F, args = c(p=0.0243, q=0.2329)) +
+labs(title = 'iPhone shipments - cumulative adoptions')
+cumulative_adopt
+```
+
+
+Prediction:
+
+```{r}
+data$Pred_sales = bass.f(1:14, p = 0.0243, q = 0.2395) * 3086
+ggplot(data, aes(Year, Shipments)) + geom_bar(stat = 'identity') + geom_point(mapping = aes(Year, Pred_sales), color = 'red')
+```
+
+
+6. Estimating the number of adopters by period.
+
+As already mentioned, the chosen look-alike innovation may help us predict the sales of the chosen product, the Samsung Galaxy S22 Ultra. As the latter is an invention of the year 2022, we might consider the predicted sales of iPhone's in 2022: as it is shown, the predicted shipments of iPhone's is around 165 million units. It is known that the global smartphone market share of Apple in 2022 was 27.85% (Turner, 2023), therefore, with rough calculations, we can conclude that in the global market there have been around 592,5 million units of smartphone shipments. And also it is known that Samsung has held 28.07% of the global smartphone market share, therefore there would be 166.3 million units of Samsung phones shipped in 2022. The number of adopters is highly related to the number of Samsung phones shipped and we can state that if each person buys one Samsung phone for themselves, then the number of adopters will be equal to the number of units sold.
+
+
+
+Reference list:
+
+Parsi, N. (2022, November 10). An Epic Stylus smartphone. Time. https://time.com/collection/best-inventions-2022/6222190/samsung-galaxy-s22-ultra/
+
+Apple iPhone smartphone shipments worldwide 2010-2023 | Statista. (2023, August 10). Statista. https://www.statista.com/statistics/299153/apple-smartphone-shipments-worldwide/
+
+Samsung Galaxy S22 Ultra 5G alternatives - Similar or related devices. (n.d.-b). https://m.gsmarena.com/related.php3?idPhone=11251
+
+Turner, A. (2023, August 9). How many people have Samsung phones? Market share (2023). BankMyCell. https://www.bankmycell.com/blog/samsung-market-share-number-of-users/
+
+
+
